@@ -1,0 +1,77 @@
+version: "3.8"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: postgres_production
+    restart: unless-stopped
+
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-hotinbox}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256"
+      PGDATA: /var/lib/postgresql/data/pgdata
+
+    volumes:
+      # Main database data - PERSISTENT
+      - postgres_data:/var/lib/postgresql/data
+      # Custom configuration files
+      - /root/postgres-setup/config/postgresql.conf:/etc/postgresql/postgresql.conf:ro
+      - /root/postgres-setup/config/pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
+      # Logs directory
+      - postgres_logs:/var/log/postgresql
+
+    ports:
+      - "5432:5432" # Bind to localhost only for security
+
+    command: >
+      postgres
+      -c config_file=/etc/postgresql/postgresql.conf
+      -c hba_file=/etc/postgresql/pg_hba.conf
+      -c log_directory=/var/log/postgresql
+      -c logging_collector=on
+
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-production_db}",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "5"
+
+    networks:
+      - postgres_network
+
+    # Security: run as non-root user
+    user: postgres
+
+volumes:
+  # Main persistent volume for database data
+  postgres_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /mnt/storage/postgres-data # Host path for data persistence
+
+  # Persistent volume for logs
+  postgres_logs:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /mnt/storage/postgres-logs
+
+networks:
+  postgres_network:
+    driver: bridge
