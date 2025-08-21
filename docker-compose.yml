@@ -16,27 +16,57 @@ services:
     volumes:
       # Main database data - PERSISTENT
       - postgres_data:/var/lib/postgresql/data
-      # Custom configuration files
-      - /root/postgres-setup/config/postgresql.conf:/etc/postgresql/postgresql.conf:ro
-      - /root/postgres-setup/config/pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
       # Logs directory
       - postgres_logs:/var/log/postgresql
 
     ports:
-      - "5432:5432" # Bind to localhost only for security
+      - "5432:5432"
 
+    # Inline configuration without external config files
     command: >
       postgres
-      -c config_file=/etc/postgresql/postgresql.conf
-      -c hba_file=/etc/postgresql/pg_hba.conf
-      -c log_directory=/var/log/postgresql
+      -c listen_addresses='*'
+      -c max_connections=200
+      -c superuser_reserved_connections=3
+      -c password_encryption=scram-sha-256
+      -c shared_buffers=2GB
+      -c effective_cache_size=4GB
+      -c work_mem=4MB
+      -c maintenance_work_mem=64MB
+      -c wal_buffers=16MB
+      -c checkpoint_completion_target=0.9
+      -c wal_level=replica
+      -c max_wal_size=1GB
+      -c min_wal_size=80MB
+      -c checkpoint_timeout=5min
+      -c log_destination=stderr
       -c logging_collector=on
+      -c log_directory=/var/log/postgresql
+      -c log_filename='postgresql-%Y-%m-%d_%H%M%S.log'
+      -c log_rotation_age=1d
+      -c log_rotation_size=100MB
+      -c log_min_messages=warning
+      -c log_min_error_statement=error
+      -c log_min_duration_statement=1000
+      -c log_line_prefix='%t [%p]: [%l-1] user=%u,db=%d,app=%a,client=%h '
+      -c log_statement=mod
+      -c log_temp_files=0
+      -c shared_preload_libraries='pg_stat_statements'
+      -c random_page_cost=1.1
+      -c effective_io_concurrency=200
+      -c default_statistics_target=100
+      -c autovacuum=on
+      -c autovacuum_max_workers=3
+      -c autovacuum_naptime=1min
+      -c ssl=off
+      -c timezone='UTC'
+      -c log_timezone='UTC'
 
     healthcheck:
       test:
         [
           "CMD-SHELL",
-          "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-production_db}",
+          "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-hotinbox}",
         ]
       interval: 30s
       timeout: 10s
@@ -62,7 +92,7 @@ volumes:
     driver_opts:
       type: none
       o: bind
-      device: /mnt/storage/postgres-data # Host path for data persistence
+      device: /mnt/storage/postgres-data
 
   # Persistent volume for logs
   postgres_logs:
